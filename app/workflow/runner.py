@@ -268,6 +268,22 @@ def submit_chapter_notes(chapter_id: str, notes: str) -> None:
     _gen_chapter(chapter_id)
 
 
+# ── chapter error recovery ──
+
+def retry_chapter_generation(chapter_id: str) -> None:
+    """
+    Retry generation for a chapter that is stuck in error state.
+
+    Valid from: error
+    """
+    chapter = _get_chapter(chapter_id)
+    if chapter["status"] != "error":
+        raise ValueError(
+            f"Cannot retry chapter: status is {chapter['status']!r}. Expected 'error'."
+        )
+    _gen_chapter(chapter_id)
+
+
 # ── final compilation stage ──
 
 def run_compilation(book_id: str) -> str:
