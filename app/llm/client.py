@@ -23,6 +23,8 @@ _INITIAL_BACKOFF = 2.0  # seconds; doubles on each retry
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 class LLMError(Exception):
+    pass
+
 _model: genai.GenerativeModel | None = None
 
 def _get_model() -> genai.GenerativeModel:

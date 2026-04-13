@@ -283,10 +283,15 @@ tbody tr:hover td { background: #f9fafb; cursor: pointer; }
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
-  display: flex;
+  /* Default to hidden; shown via JS by removing [hidden]. */
+  display: none;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+}
+
+#overlay:not([hidden]) {
+  display: flex;
 }
 
 .overlay-box {
