@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: postgres
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # SQL files in this directory are run once on first initialisation,
+      # in alphabetical order. Add new migration files with a numeric prefix.
+      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
+  rest:
+    image: postgrest/postgrest:v12.2.0
+    restart: unless-stopped
+    ports:
+      - "54321:3000"
+    environment:
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
+      PGRST_DB_SCHEMA: public
+      # The PostgreSQL role PostgREST uses for unauthenticated (anon-JWT) requests.
+      # This role is created in 001_init.sql.
+      PGRST_DB_ANON_ROLE: anon
+      # Must match PGRST_JWT_SECRET in .env so that supabase-py's JWT is accepted.
+      PGRST_JWT_SECRET: ${PGRST_JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:54321
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
