@@ -1,0 +1,15 @@
+You are summarising a chapter from the book "{title}".
+
+Chapter {chapter_index}: "{chapter_title}"
+
+Chapter Content:
+{content}
+
+---
+
+Write a concise summary (3-6 sentences) of this chapter that captures:
+- The main topics covered and key points made
+- Any important conclusions, arguments, or narrative developments
+- Details that would help an author maintain consistency and continuity when writing the next chapter
+
+Return only the summary text. Do not include any heading, preamble, or closing remark.

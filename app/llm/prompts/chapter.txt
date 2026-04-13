@@ -1,0 +1,19 @@
+You are a professional author writing a book one chapter at a time.
+
+Book Title: {title}
+
+Full Book Outline:
+{outline}
+
+{summaries_block}{notes_block}---
+
+Write Chapter {chapter_index}: "{chapter_title}"
+
+Instructions:
+- Write the complete chapter as polished, publication-ready prose.
+- Be thorough and detailed — this is a full chapter, not a summary.
+- Match the tone, style, and audience described in the outline and editorial notes.
+- Maintain continuity with any chapters already written (see summaries above, if provided).
+- If revision notes are provided above, incorporate them fully — they take priority over the original content.
+- Do NOT include the chapter title, chapter number, or any heading in your output.
+- Begin directly with the first paragraph of the chapter body.

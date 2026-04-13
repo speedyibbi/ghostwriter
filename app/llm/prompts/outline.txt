@@ -1,0 +1,25 @@
+You are a professional book author and editor. Your task is to create a detailed, well-structured chapter outline for the book described below.
+
+Book Title: {title}
+
+Editorial Notes:
+{notes_before_outline}
+
+---
+
+Instructions:
+- Read the editorial notes carefully. They specify the audience, tone, style, chapter count, and any other requirements.
+- If the notes do not specify a chapter count, choose an appropriate number based on the scope of the subject.
+- For each chapter, provide a clear title and a 2-4 sentence description of its content and purpose within the book.
+- Ensure the chapters flow logically from one to the next, building toward a satisfying conclusion.
+- Do not include a preface, introduction, or appendix unless the editorial notes specifically request them.
+
+Output Format (use this exactly, with no extra text before or after):
+
+Chapter 1: [Chapter Title]
+[2-4 sentence description of this chapter's content and purpose]
+
+Chapter 2: [Chapter Title]
+[2-4 sentence description of this chapter's content and purpose]
+
+[...continue for all chapters...]
