@@ -7,6 +7,103 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <h1>Ghostwriter</h1>
+
+<header>
+  <div class="header-inner">
+    <h1>Ghostwriter</h1>
+  </div>
+</header>
+
+<div class="container">
+  <div id="error-banner" hidden></div>
+  <div id="root"><p class="muted">Loading...</p></div>
+</div>
+
+<script>
+function escHtml(s) {
+  return (s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function badge(status) {
+  const map = {
+    pending:        ['badge-gray',   'Pending'],
+    in_review:      ['badge-orange', 'In Review'],
+    needs_revision: ['badge-orange', 'In Review'],
+    approved:       ['badge-green',  'Approved'],
+    error:          ['badge-red',    'Error'],
+    completed:      ['badge-green',  'Completed'],
+  };
+  const [cls, label] = map[status] || ['badge-gray', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+}
+
+async function loadBooks() {
+  try {
+    const res = await fetch('/api/books/');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const books = await res.json();
+    render(books);
+  } catch (e) {
+    const banner = document.getElementById('error-banner');
+    banner.textContent = 'Failed to load books: ' + e.message;
+    banner.hidden = false;
+    document.getElementById('root').innerHTML = '';
+  }
+}
+
+function render(books) {
+  const root = document.getElementById('root');
+
+  if (!books.length) {
+    root.innerHTML = `
+      <div class="empty-state">
+        <p>No books imported yet</p>
+        <p style="margin-top:.5rem">
+          Run the import script to add books from an Excel file or Google Sheet:
+        </p>
+        <code style="display:inline-block;margin-top:1rem;padding:.5rem 1rem">
+          python scripts/import_books.py --source books.xlsx
+        </code>
+      </div>`;
+    return;
+  }
+
+  let html = `
+    <table>
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Outline</th>
+          <th>Final</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+  for (const b of books) {
+    html += `
+      <tr onclick="location.href='/book/${b.id}'">
+        <td><a href="/book/${b.id}">${escHtml(b.title)}</a></td>
+        <td>${badge(b.outline_status)}</td>
+        <td>${badge(b.final_status)}</td>
+        <td class="muted">${fmtDate(b.created_at)}</td>
+      </tr>`;
+  }
+
+  html += `</tbody></table>`;
+  root.innerHTML = html;
+}
+
+loadBooks();
+</script>
+
 </body>
 </html>

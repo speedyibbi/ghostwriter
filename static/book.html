@@ -3,10 +3,325 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ghostwriter — Book</title>
+  <title>Ghostwriter</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <h1>Book</h1>
+
+<header>
+  <div class="header-inner">
+    <a href="/" class="back-link">← All Books</a>
+    <h1 id="header-title">Loading…</h1>
+  </div>
+</header>
+
+<div class="container">
+  <div id="error-banner" hidden></div>
+  <div id="root"></div>
+</div>
+
+<!-- Loading overlay (shown during LLM calls) -->
+<div id="overlay" hidden>
+  <div class="overlay-box">
+    <div class="spinner"></div>
+    <p id="loading-msg">Working…</p>
+  </div>
+</div>
+
+<script>
+// ── Utilities ──
+
+const bookId = location.pathname.split('/').filter(Boolean).pop();
+
+function escHtml(s) {
+  return (s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function badge(status) {
+  const map = {
+    pending:        ['badge-gray',   'Pending'],
+    in_review:      ['badge-orange', 'In Review'],
+    needs_revision: ['badge-orange', 'Regenerating…'],
+    approved:       ['badge-green',  'Approved'],
+    error:          ['badge-red',    'Error'],
+    completed:      ['badge-green',  'Completed'],
+  };
+  const [cls, label] = map[status] || ['badge-gray', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+// ── API ──
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  return data;
+}
+
+// ── State ──
+
+let book = null;
+let chapters = [];
+
+async function load() {
+  const [b, chs] = await Promise.all([
+    api('GET', `/api/books/${bookId}`),
+    api('GET', `/api/chapters/${bookId}`),
+  ]);
+  book = b;
+  chapters = chs;
+  render();
+}
+
+// ── Action runner ──
+
+async function run(fn, msg = 'Working…') {
+  setLoading(true, msg);
+  setError(null);
+  try {
+    await fn();
+    await load();
+  } catch (e) {
+    setError(e.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function setLoading(on, msg = '') {
+  document.getElementById('overlay').hidden = !on;
+  document.getElementById('loading-msg').textContent = msg;
+}
+
+function setError(msg) {
+  const el = document.getElementById('error-banner');
+  if (msg) { el.textContent = '⚠ ' + msg; el.hidden = false; }
+  else { el.hidden = true; }
+}
+
+function toggleSection(id) {
+  const el = document.getElementById(id);
+  if (el) el.hidden = !el.hidden;
+}
+
+// ── Render ──
+
+function render() {
+  const title = book.title || 'Untitled';
+  document.getElementById('header-title').textContent = title;
+  document.title = `${title} — Ghostwriter`;
+  document.getElementById('root').innerHTML =
+    renderOutlineCard() +
+    renderChaptersCard() +
+    renderCompilationCard();
+}
+
+// ── Outline card ──
+
+function renderOutlineCard() {
+  const st = book.outline_status;
+  let body = '';
+
+  if (st === 'pending') {
+    body += `
+      <div style="margin-bottom:1rem">
+        <p class="muted" style="margin-bottom:.375rem"><strong>Editorial notes</strong></p>
+        <div class="content-box" style="max-height:160px">${escHtml(book.notes_before_outline)}</div>
+      </div>
+      <button onclick="genOutline()">Generate Outline</button>`;
+
+  } else if (st === 'in_review') {
+    if (book.notes_after_outline) {
+      body += `<p class="muted" style="margin-bottom:.5rem">
+        Last revision notes: <em>${escHtml(book.notes_after_outline)}</em>
+      </p>`;
+    }
+    body += `<div class="content-box">${escHtml(book.outline)}</div>`;
+    body += `
+      <div class="actions">
+        <button class="btn-success" onclick="approveOutline()">Approve &amp; Start Chapters</button>
+        <button class="btn-secondary" onclick="toggleSection('outline-rev')">Request Revision</button>
+      </div>
+      <div id="outline-rev" class="revision-form" hidden>
+        <textarea id="outline-notes" rows="4"
+          placeholder="What would you like changed? Be specific."></textarea>
+        <button onclick="submitOutlineNotes()">Submit &amp; Regenerate</button>
+      </div>`;
+
+  } else if (st === 'needs_revision') {
+    body += `<p class="muted">Regenerating outline with your notes…</p>`;
+
+  } else if (st === 'approved') {
+    body += `
+      <details>
+        <summary>View approved outline</summary>
+        <div class="content-box">${escHtml(book.outline)}</div>
+      </details>`;
+
+  } else if (st === 'error') {
+    body += `
+      <p class="error-text">⚠ ${escHtml(book.error_message || 'Generation failed. Check logs for details.')}</p>
+      <button onclick="genOutline()">Retry</button>`;
+  }
+
+  return `<div class="card"><h2>Outline ${badge(st)}</h2>${body}</div>`;
+}
+
+// ── Chapters card ──
+
+function renderChaptersCard() {
+  if (book.outline_status !== 'approved') return '';
+
+  let body = '';
+  if (!chapters.length) {
+    body = '<p class="muted">Setting up chapters…</p>';
+  } else {
+    body = chapters.map(renderChapter).join('');
+  }
+
+  return `<div class="card"><h2>Chapters</h2>${body}</div>`;
+}
+
+function renderChapter(ch) {
+  const st = ch.status;
+  const chNum = `Ch. ${ch.chapter_index}`;
+  let body = '';
+
+  if (st === 'in_review' || st === 'approved') {
+    if (ch.content) {
+      const open = st === 'in_review' ? ' open' : '';
+      body += `
+        <details${open}>
+          <summary>Read chapter</summary>
+          <div class="content-box">${escHtml(ch.content)}</div>
+        </details>`;
+    }
+  }
+
+  if (st === 'in_review') {
+    body += `
+      <div class="actions">
+        <button class="btn-success" onclick="approveChapter('${ch.id}')">Approve</button>
+        <button class="btn-secondary" onclick="toggleSection('ch-${ch.id}-rev')">Request Revision</button>
+      </div>
+      <div id="ch-${ch.id}-rev" class="revision-form" hidden>
+        <textarea id="ch-${ch.id}-notes" rows="4"
+          placeholder="What would you like changed?"></textarea>
+        <button onclick="submitChapterNotes('${ch.id}')">Submit &amp; Regenerate</button>
+      </div>`;
+
+  } else if (st === 'error') {
+    body += `
+      <p class="error-text">⚠ ${escHtml(ch.error_message || 'Generation failed.')}</p>
+      <div class="actions">
+        <button onclick="retryChapter('${ch.id}')">Retry</button>
+      </div>`;
+
+  } else if (st === 'pending') {
+    body += `<p class="muted" style="padding:.375rem 0">Queued</p>`;
+
+  } else if (st === 'needs_revision') {
+    body += `<p class="muted" style="padding:.375rem 0">Regenerating…</p>`;
+  }
+
+  return `
+    <div class="chapter-card">
+      <div class="chapter-header">
+        <span class="chapter-num">${chNum}</span>
+        <span class="chapter-title">${escHtml(ch.title || '')}</span>
+        ${badge(st)}
+      </div>
+      ${body ? `<div class="chapter-body">${body}</div>` : ''}
+    </div>`;
+}
+
+// ── Compilation card ──
+
+function renderCompilationCard() {
+  const st = book.final_status;
+  if (st !== 'in_review' && st !== 'completed') return '';
+
+  let body = '';
+  if (st === 'in_review') {
+    body = `
+      <p style="margin-bottom:1rem">
+        All chapters approved. Ready to compile into
+        <code>.docx</code> and <code>.txt</code>.
+      </p>
+      <button onclick="compile()">Compile Book</button>`;
+  } else {
+    body = `
+      <p class="success-text" style="margin-bottom:.5rem">✓ Compiled successfully</p>
+      <p>Output saved to: <code>${escHtml(book.output_path)}</code></p>`;
+  }
+
+  return `<div class="card"><h2>Final Compilation ${badge(st)}</h2>${body}</div>`;
+}
+
+// ── Action handlers ──
+
+function genOutline() {
+  run(
+    () => api('POST', `/api/workflow/${bookId}/generate-outline`),
+    'Generating outline… this may take a minute.',
+  );
+}
+
+function approveOutline() {
+  run(
+    () => api('POST', `/api/workflow/${bookId}/approve-outline`),
+    'Approving outline and generating Chapter 1… this may take a few minutes.',
+  );
+}
+
+function submitOutlineNotes() {
+  const notes = document.getElementById('outline-notes').value;
+  if (!notes.trim()) { setError('Please enter revision notes before submitting.'); return; }
+  run(
+    () => api('POST', `/api/workflow/${bookId}/submit-outline-notes`, { notes }),
+    'Saving notes and regenerating outline…',
+  );
+}
+
+function approveChapter(id) {
+  run(
+    () => api('POST', `/api/workflow/chapter/${id}/approve`),
+    'Approving chapter and generating the next one… this may take a few minutes.',
+  );
+}
+
+function submitChapterNotes(id) {
+  const notes = document.getElementById(`ch-${id}-notes`).value;
+  if (!notes.trim()) { setError('Please enter revision notes before submitting.'); return; }
+  run(
+    () => api('POST', `/api/workflow/chapter/${id}/submit-notes`, { notes }),
+    'Saving notes and regenerating chapter…',
+  );
+}
+
+function retryChapter(id) {
+  run(
+    () => api('POST', `/api/workflow/chapter/${id}/retry`),
+    'Retrying chapter generation…',
+  );
+}
+
+function compile() {
+  run(
+    () => api('POST', `/api/workflow/${bookId}/compile`),
+    'Compiling book…',
+  );
+}
+
+load().catch(e => {
+  setError('Failed to load book: ' + e.message);
+  document.getElementById('header-title').textContent = 'Error';
+});
+</script>
+
 </body>
 </html>
