@@ -4,6 +4,7 @@ from app.core.config import settings
 
 _client: Client | None = None
 
+
 def get_client() -> Client:
     global _client
     if _client is None:

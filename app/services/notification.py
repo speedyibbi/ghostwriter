@@ -8,10 +8,10 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _SUBJECTS: dict[str, str] = {
-    "outline_ready":     "Outline ready for review",
-    "chapter_ready":     "Chapter ready for review",
-    "compilation_done":  "Book compilation complete",
-    "workflow_error":    "Workflow error — action required",
+    "outline_ready": "Outline ready for review",
+    "chapter_ready": "Chapter ready for review",
+    "compilation_done": "Book compilation complete",
+    "workflow_error": "Workflow error — action required",
 }
 
 

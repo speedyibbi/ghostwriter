@@ -7,6 +7,7 @@ from app.services.notification import notify
 
 logger = logging.getLogger(__name__)
 
+
 def generate_outline(book_id: str) -> str:
     """
     Generate a book outline using the LLM and persist it to the DB.
@@ -17,10 +18,12 @@ def generate_outline(book_id: str) -> str:
     """
     db = get_client()
 
-    response = db.table("books") \
-        .select("title, notes_before_outline") \
-        .eq("id", book_id) \
+    response = (
+        db.table("books")
+        .select("title, notes_before_outline")
+        .eq("id", book_id)
         .execute()
+    )
 
     if not response.data:
         raise ValueError(f"Book {book_id!r} not found")
@@ -35,22 +38,26 @@ def generate_outline(book_id: str) -> str:
         )
         outline = generate(prompt)
     except LLMError as exc:
-        db.table("books").update({
-            "outline_status": "error",
-            "error_message": str(exc),
-        }).eq("id", book_id).execute()
+        db.table("books").update(
+            {
+                "outline_status": "error",
+                "error_message": str(exc),
+            }
+        ).eq("id", book_id).execute()
         log_event("outline_error", str(exc), book_id=book_id)
         raise
 
-    db.table("books").update({
-        "outline": outline,
-        "outline_status": "in_review",
-        "error_message": None,
-    }).eq("id", book_id).execute()
+    db.table("books").update(
+        {
+            "outline": outline,
+            "outline_status": "in_review",
+            "error_message": None,
+        }
+    ).eq("id", book_id).execute()
 
     log_event(
         "outline_generated",
-        f"Outline generated for \"{book['title']}\"",
+        f'Outline generated for "{book["title"]}"',
         book_id=book_id,
     )
     notify(

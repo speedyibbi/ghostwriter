@@ -4,6 +4,7 @@ from app.core.database import get_client
 
 router = APIRouter()
 
+
 @router.get("/")
 def list_books():
     """Return all books ordered by creation date (newest first)."""
@@ -15,6 +16,7 @@ def list_books():
         .execute()
     )
     return resp.data or []
+
 
 @router.get("/{book_id}")
 def get_book(book_id: str):

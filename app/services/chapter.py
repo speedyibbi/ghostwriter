@@ -7,6 +7,7 @@ from app.services.notification import notify
 
 logger = logging.getLogger(__name__)
 
+
 def generate_chapter(chapter_id: str) -> str:
     """
     Generate content for a single chapter and persist it to the DB.
@@ -50,7 +51,7 @@ def generate_chapter(chapter_id: str) -> str:
         lines = ["Summary of chapters written so far:"]
         for ch in prior_chapters:
             ch_title = ch.get("title") or f"Chapter {ch['chapter_index']}"
-            lines.append(f"\nChapter {ch['chapter_index']}: \"{ch_title}\"")
+            lines.append(f'\nChapter {ch["chapter_index"]}: "{ch_title}"')
             lines.append((ch.get("summary") or "").strip())
         summaries_block = "\n".join(lines) + "\n\n"
 
@@ -72,23 +73,27 @@ def generate_chapter(chapter_id: str) -> str:
         )
         content = generate(prompt)
     except LLMError as exc:
-        db.table("chapters").update({
-            "status": "error",
-            "error_message": str(exc),
-        }).eq("id", chapter_id).execute()
+        db.table("chapters").update(
+            {
+                "status": "error",
+                "error_message": str(exc),
+            }
+        ).eq("id", chapter_id).execute()
         log_event("chapter_error", str(exc), book_id=book_id, chapter_id=chapter_id)
         raise
 
-    db.table("chapters").update({
-        "content": content,
-        "status": "in_review",
-        "revision_count": (chapter.get("revision_count") or 0) + 1,
-        "error_message": None,
-    }).eq("id", chapter_id).execute()
+    db.table("chapters").update(
+        {
+            "content": content,
+            "status": "in_review",
+            "revision_count": (chapter.get("revision_count") or 0) + 1,
+            "error_message": None,
+        }
+    ).eq("id", chapter_id).execute()
 
     log_event(
         "chapter_generated",
-        f"Chapter {chapter['chapter_index']} generated for \"{book['title']}\"",
+        f'Chapter {chapter["chapter_index"]} generated for "{book["title"]}"',
         book_id=book_id,
         chapter_id=chapter_id,
     )
@@ -96,12 +101,13 @@ def generate_chapter(chapter_id: str) -> str:
         "chapter_ready",
         book_title=book["title"],
         details=(
-            f"Chapter {chapter['chapter_index']}: \"{chapter_title}\" "
+            f'Chapter {chapter["chapter_index"]}: "{chapter_title}" '
             "is ready for your review in Ghostwriter."
         ),
     )
 
     return content
+
 
 def generate_summary(chapter_id: str) -> str:
     """

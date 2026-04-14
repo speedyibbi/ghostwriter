@@ -34,6 +34,7 @@ _CHAPTER_RE = re.compile(
 
 # ── helpers ──
 
+
 def _parse_chapters(outline: str) -> list[tuple[int, str]]:
     """Return [(chapter_index, title), …] extracted from the outline text."""
     matches = _CHAPTER_RE.findall(outline)
@@ -55,6 +56,7 @@ def _get_chapter(chapter_id: str) -> dict:
 
 
 # ── outline stage ──
+
 
 def run_outline_generation(book_id: str) -> None:
     """
@@ -89,13 +91,16 @@ def submit_outline_notes(book_id: str, notes: str) -> None:
             f"{book['outline_status']!r}. Expected 'in_review'."
         )
 
-    get_client().table("books").update({
-        "notes_after_outline": notes.strip(),
-        "outline_status": "needs_revision",
-    }).eq("id", book_id).execute()
+    get_client().table("books").update(
+        {
+            "notes_after_outline": notes.strip(),
+            "outline_status": "needs_revision",
+        }
+    ).eq("id", book_id).execute()
 
-    log_event("outline_revision_requested", "Editor submitted revision notes",
-              book_id=book_id)
+    log_event(
+        "outline_revision_requested", "Editor submitted revision notes", book_id=book_id
+    )
 
     _gen_outline(book_id)
 
@@ -143,12 +148,14 @@ def approve_outline(book_id: str) -> None:
             .execute()
         )
         if not exists.data:
-            db.table("chapters").insert({
-                "book_id": book_id,
-                "chapter_index": chapter_index,
-                "title": chapter_title,
-                "status": "pending",
-            }).execute()
+            db.table("chapters").insert(
+                {
+                    "book_id": book_id,
+                    "chapter_index": chapter_index,
+                    "title": chapter_title,
+                    "status": "pending",
+                }
+            ).execute()
         if chapter_index < min_index:
             min_index = chapter_index
 
@@ -165,6 +172,7 @@ def approve_outline(book_id: str) -> None:
 
 
 # ── chapter stage ──
+
 
 def approve_chapter(chapter_id: str) -> None:
     """
@@ -202,9 +210,11 @@ def approve_chapter(chapter_id: str) -> None:
             chapter_id,
             exc,
         )
-        db.table("chapters").update({
-            "error_message": f"Summary generation failed: {exc}",
-        }).eq("id", chapter_id).execute()
+        db.table("chapters").update(
+            {
+                "error_message": f"Summary generation failed: {exc}",
+            }
+        ).eq("id", chapter_id).execute()
 
     # Trigger the next pending chapter.
     next_ch = (
@@ -229,7 +239,9 @@ def approve_chapter(chapter_id: str) -> None:
         .execute()
     )
     if not not_done.data:
-        db.table("books").update({"final_status": "in_review"}).eq("id", book_id).execute()
+        db.table("books").update({"final_status": "in_review"}).eq(
+            "id", book_id
+        ).execute()
         log_event(
             "all_chapters_approved",
             "All chapters approved; book ready for final compilation",
@@ -253,10 +265,12 @@ def submit_chapter_notes(chapter_id: str, notes: str) -> None:
             f"{chapter['status']!r}. Expected 'in_review'."
         )
 
-    get_client().table("chapters").update({
-        "notes": notes.strip(),
-        "status": "needs_revision",
-    }).eq("id", chapter_id).execute()
+    get_client().table("chapters").update(
+        {
+            "notes": notes.strip(),
+            "status": "needs_revision",
+        }
+    ).eq("id", chapter_id).execute()
 
     log_event(
         "chapter_revision_requested",
@@ -269,6 +283,7 @@ def submit_chapter_notes(chapter_id: str, notes: str) -> None:
 
 
 # ── chapter error recovery ──
+
 
 def retry_chapter_generation(chapter_id: str) -> None:
     """
@@ -285,6 +300,7 @@ def retry_chapter_generation(chapter_id: str) -> None:
 
 
 # ── final compilation stage ──
+
 
 def run_compilation(book_id: str) -> str:
     """

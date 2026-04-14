@@ -22,10 +22,13 @@ _INITIAL_BACKOFF = 2.0  # seconds; doubles on each retry
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
+
 class LLMError(Exception):
     pass
 
+
 _model: genai.GenerativeModel | None = None
+
 
 def _get_model() -> genai.GenerativeModel:
     global _model
@@ -33,6 +36,7 @@ def _get_model() -> genai.GenerativeModel:
         genai.configure(api_key=settings.gemini_api_key)
         _model = genai.GenerativeModel(settings.gemini_model)
     return _model
+
 
 def generate(prompt: str) -> str:
     model = _get_model()
@@ -59,6 +63,7 @@ def generate(prompt: str) -> str:
     raise LLMError(
         f"Gemini call failed after {_MAX_RETRIES} retries: {last_exc}"
     ) from last_exc
+
 
 def load_prompt(name: str, **kwargs: str) -> str:
     """

@@ -11,6 +11,7 @@ from app.services.notification import notify
 
 logger = logging.getLogger(__name__)
 
+
 def _safe_filename(text: str) -> str:
     """Strip characters that are unsafe in filenames and truncate to 80 chars."""
     return re.sub(r"[^\w\s-]", "", text).strip().replace(" ", "_")[:80]
@@ -57,9 +58,7 @@ def compile_book(book_id: str) -> str:
 
     for chapter in chapters:
         ch_title = chapter.get("title") or f"Chapter {chapter['chapter_index']}"
-        doc.add_heading(
-            f"Chapter {chapter['chapter_index']}: {ch_title}", level=1
-        )
+        doc.add_heading(f"Chapter {chapter['chapter_index']}: {ch_title}", level=1)
         doc.add_paragraph(chapter.get("content") or "")
 
     doc.save(str(docx_path))
@@ -80,14 +79,16 @@ def compile_book(book_id: str) -> str:
     # ── persist & notify ──
     output_path = str(output_dir)
 
-    db.table("books").update({
-        "output_path": output_path,
-        "final_status": "completed",
-    }).eq("id", book_id).execute()
+    db.table("books").update(
+        {
+            "output_path": output_path,
+            "final_status": "completed",
+        }
+    ).eq("id", book_id).execute()
 
     log_event(
         "book_compiled",
-        f"\"{book_title}\" compiled to {output_path}",
+        f'"{book_title}" compiled to {output_path}',
         book_id=book_id,
     )
     notify(

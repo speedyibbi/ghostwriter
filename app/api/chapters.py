@@ -4,6 +4,7 @@ from app.core.database import get_client
 
 router = APIRouter()
 
+
 @router.get("/{book_id}")
 def list_chapters(book_id: str):
     """Return all chapters for a book ordered by chapter_index."""

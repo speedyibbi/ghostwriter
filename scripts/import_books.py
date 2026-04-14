@@ -29,16 +29,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Load .env from the project root before pydantic-settings instantiates.
 from dotenv import load_dotenv  # noqa: E402  (after sys.path manipulation)
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from app.core.config import settings       # noqa: E402
-from app.core.database import get_client   # noqa: E402
+from app.core.config import settings  # noqa: E402
+from app.core.database import get_client  # noqa: E402
 
 # ── Source readers ──
+
 
 def _normalise_key(k: str) -> str:
     """'Notes Before Outline' → 'notes_before_outline'"""
     return str(k).strip().lower().replace(" ", "_")
+
 
 def _rows_from_excel(path_str: str) -> tuple[list[dict], str]:
     """
@@ -70,13 +73,13 @@ def _rows_from_excel(path_str: str) -> tuple[list[dict], str]:
     result: list[dict] = []
     for excel_row_idx, row in enumerate(all_rows[1:], start=2):
         record = {
-            headers[j]: (row[j] if j < len(row) else None)
-            for j in range(len(headers))
+            headers[j]: (row[j] if j < len(row) else None) for j in range(len(headers))
         }
         record["_row"] = excel_row_idx
         result.append(record)
 
     return result, path.name
+
 
 def _rows_from_sheets(url: str) -> tuple[list[dict], str]:
     """
@@ -122,7 +125,9 @@ def _rows_from_sheets(url: str) -> tuple[list[dict], str]:
 
     return result, sh.id
 
+
 # ── Importer ──
+
 
 def _import(rows: list[dict], source_prefix: str) -> None:
     """
@@ -151,28 +156,27 @@ def _import(rows: list[dict], source_prefix: str) -> None:
         source_id = f"{source_prefix}:row{row_num}"
 
         existing = (
-            db.table("books")
-            .select("id, title")
-            .eq("source_id", source_id)
-            .execute()
+            db.table("books").select("id, title").eq("source_id", source_id).execute()
         )
         if existing.data:
             print(
                 f"  row {row_num}: skipped — already imported "
-                f"as \"{existing.data[0]['title']}\""
+                f'as "{existing.data[0]["title"]}"'
             )
             skipped += 1
             continue
 
         try:
-            db.table("books").insert({
-                "source_id": source_id,
-                "title": title,
-                "notes_before_outline": notes,
-                "outline_status": "pending",
-                "final_status": "pending",
-            }).execute()
-            print(f"  row {row_num}: imported \"{title}\"")
+            db.table("books").insert(
+                {
+                    "source_id": source_id,
+                    "title": title,
+                    "notes_before_outline": notes,
+                    "outline_status": "pending",
+                    "final_status": "pending",
+                }
+            ).execute()
+            print(f'  row {row_num}: imported "{title}"')
             imported += 1
         except Exception as exc:
             print(f"  row {row_num}: error — {exc}")
@@ -180,11 +184,14 @@ def _import(rows: list[dict], source_prefix: str) -> None:
 
     print(f"\nDone. {imported} imported, {skipped} skipped, {errors} errors.")
 
+
 # ── CLI ──
+
 
 def _die(msg: str) -> None:
     print(f"Error: {msg}", file=sys.stderr)
     sys.exit(1)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -214,6 +221,7 @@ def main() -> None:
 
     print(f"Found {len(rows)} data row(s). Importing…\n")
     _import(rows, prefix)
+
 
 if __name__ == "__main__":
     main()
