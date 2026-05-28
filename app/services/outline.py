@@ -12,6 +12,10 @@ def generate_outline(book_id: str) -> str:
     """
     Generate a book outline using the LLM and persist it to the DB.
 
+    When notes_after_outline is set, the previous outline (if any) and those
+    notes are included in the prompt so the model can revise rather than start
+    from scratch.
+
     Sets outline_status to 'in_review' on success, 'error' on failure.
     Raises LLMError (or ValueError for missing data) so the caller can handle
     the error state at the workflow level.
@@ -20,7 +24,7 @@ def generate_outline(book_id: str) -> str:
 
     response = (
         db.table("books")
-        .select("title, notes_before_outline")
+        .select("title, notes_before_outline, notes_after_outline, outline")
         .eq("id", book_id)
         .execute()
     )
@@ -30,11 +34,25 @@ def generate_outline(book_id: str) -> str:
 
     book = response.data[0]
 
+    revision_block = ""
+    if book.get("notes_after_outline"):
+        lines: list[str] = []
+        prior = (book.get("outline") or "").strip()
+        if prior:
+            lines += ["Previous outline:", prior, ""]
+        lines += [
+            "Revision notes from the editor:",
+            book["notes_after_outline"].strip(),
+            "",
+        ]
+        revision_block = "\n".join(lines)
+
     try:
         prompt = load_prompt(
             "outline",
             title=book["title"],
             notes_before_outline=book["notes_before_outline"],
+            revision_block=revision_block,
         )
         outline = generate(prompt)
     except LLMError as exc:
