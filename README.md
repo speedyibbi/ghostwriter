@@ -22,6 +22,7 @@ The system is designed to be:
 - **State-driven** — all progression is controlled by status fields in Supabase
 - **Resumable** — safe to stop and restart; state is always in the DB
 - **UI-triggered** — editor actions in the web UI advance the workflow; no external webhooks needed
+- **Non-blocking** — long LLM steps run in a background thread pool; the API returns `202` and the UI polls book/chapter status
 - **Extensible** — research augmentation can be added later without changing the core interface
 
 ---
@@ -121,8 +122,9 @@ A consistent set of status values used across both `books` and `chapters`:
 | Value            | Meaning                                              |
 |------------------|------------------------------------------------------|
 | `pending`        | Not yet processed                                    |
+| `processing`     | Background job running (UI polls until this clears)  |
 | `in_review`      | Generated and waiting for editor action              |
-| `needs_revision` | Editor submitted notes; regeneration required        |
+| `needs_revision` | Legacy; editor submitted notes (use `processing`)    |
 | `approved`       | Editor approved; workflow may proceed                |
 | `error`          | A failure occurred; see `error_message`              |
 | `completed`      | Final state; no further action needed                |

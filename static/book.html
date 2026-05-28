@@ -41,6 +41,7 @@ function escHtml(s) {
 function badge(status) {
   const map = {
     pending:        ['badge-gray',   'Pending'],
+    processing:     ['badge-orange', 'Generating…'],
     in_review:      ['badge-orange', 'In Review'],
     needs_revision: ['badge-orange', 'Regenerating…'],
     approved:       ['badge-green',  'Approved'],
@@ -64,8 +65,17 @@ async function api(method, path, body) {
 
 // ── State ──
 
+const POLL_MS = 2000;
 let book = null;
 let chapters = [];
+let pollTimer = null;
+
+function isBusy() {
+  if (!book) return false;
+  if (book.outline_status === 'processing') return true;
+  if (book.final_status === 'processing') return true;
+  return chapters.some(ch => ch.status === 'processing');
+}
 
 async function load() {
   const [b, chs] = await Promise.all([
@@ -77,18 +87,38 @@ async function load() {
   render();
 }
 
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  setLoading(false);
+}
+
+function startPolling(msg = 'Working…') {
+  setLoading(true, msg);
+  if (pollTimer) return;
+  pollTimer = setInterval(async () => {
+    try {
+      await load();
+      if (!isBusy()) stopPolling();
+    } catch (e) {
+      setError(e.message);
+      stopPolling();
+    }
+  }, POLL_MS);
+}
+
 // ── Action runner ──
 
-async function run(fn, msg = 'Working…') {
-  setLoading(true, msg);
+async function runWorkflow(postFn, msg = 'Working…') {
   setError(null);
   try {
-    await fn();
+    await postFn();
     await load();
+    if (isBusy()) startPolling(msg);
   } catch (e) {
     setError(e.message);
-  } finally {
-    setLoading(false);
   }
 }
 
@@ -152,8 +182,8 @@ function renderOutlineCard() {
         <button onclick="submitOutlineNotes()">Submit &amp; Regenerate</button>
       </div>`;
 
-  } else if (st === 'needs_revision') {
-    body += `<p class="muted">Regenerating outline with your notes…</p>`;
+  } else if (st === 'processing' || st === 'needs_revision') {
+    body += `<p class="muted">Generating outline…</p>`;
 
   } else if (st === 'approved') {
     body += `
@@ -224,8 +254,8 @@ function renderChapter(ch) {
   } else if (st === 'pending') {
     body += `<p class="muted" style="padding:.375rem 0">Queued</p>`;
 
-  } else if (st === 'needs_revision') {
-    body += `<p class="muted" style="padding:.375rem 0">Regenerating…</p>`;
+  } else if (st === 'processing' || st === 'needs_revision') {
+    body += `<p class="muted" style="padding:.375rem 0">Generating…</p>`;
   }
 
   return `
@@ -246,13 +276,19 @@ function renderCompilationCard() {
   if (st !== 'in_review' && st !== 'completed') return '';
 
   let body = '';
-  if (st === 'in_review') {
+  if (st === 'processing') {
+    body = '<p class="muted">Compiling book…</p>';
+  } else if (st === 'in_review') {
     body = `
       <p style="margin-bottom:1rem">
         All chapters approved. Ready to compile into
         <code>.docx</code> and <code>.txt</code>.
       </p>
       <button onclick="compile()">Compile Book</button>`;
+  } else if (st === 'error') {
+    body = `
+      <p class="error-text">⚠ ${escHtml(book.error_message || 'Compilation failed.')}</p>
+      <button onclick="compile()">Retry Compile</button>`;
   } else {
     body = `
       <p class="success-text" style="margin-bottom:.5rem">✓ Compiled successfully</p>
@@ -265,62 +301,64 @@ function renderCompilationCard() {
 // ── Action handlers ──
 
 function genOutline() {
-  run(
+  runWorkflow(
     () => api('POST', `/api/workflow/${bookId}/generate-outline`),
-    'Generating outline… this may take a minute.',
+    'Generating outline…',
   );
 }
 
 function approveOutline() {
-  run(
+  runWorkflow(
     () => api('POST', `/api/workflow/${bookId}/approve-outline`),
-    'Approving outline and generating Chapter 1… this may take a few minutes.',
+    'Generating Chapter 1…',
   );
 }
 
 function submitOutlineNotes() {
   const notes = document.getElementById('outline-notes').value;
   if (!notes.trim()) { setError('Please enter revision notes before submitting.'); return; }
-  run(
+  runWorkflow(
     () => api('POST', `/api/workflow/${bookId}/submit-outline-notes`, { notes }),
-    'Saving notes and regenerating outline…',
+    'Regenerating outline…',
   );
 }
 
 function approveChapter(id) {
-  run(
+  runWorkflow(
     () => api('POST', `/api/workflow/chapter/${id}/approve`),
-    'Approving chapter and generating the next one… this may take a few minutes.',
+    'Working on next chapter…',
   );
 }
 
 function submitChapterNotes(id) {
   const notes = document.getElementById(`ch-${id}-notes`).value;
   if (!notes.trim()) { setError('Please enter revision notes before submitting.'); return; }
-  run(
+  runWorkflow(
     () => api('POST', `/api/workflow/chapter/${id}/submit-notes`, { notes }),
-    'Saving notes and regenerating chapter…',
+    'Regenerating chapter…',
   );
 }
 
 function retryChapter(id) {
-  run(
+  runWorkflow(
     () => api('POST', `/api/workflow/chapter/${id}/retry`),
     'Retrying chapter generation…',
   );
 }
 
 function compile() {
-  run(
+  runWorkflow(
     () => api('POST', `/api/workflow/${bookId}/compile`),
     'Compiling book…',
   );
 }
 
-load().catch(e => {
-  setError('Failed to load book: ' + e.message);
-  document.getElementById('header-title').textContent = 'Error';
-});
+load()
+  .then(() => { if (isBusy()) startPolling('Working…'); })
+  .catch(e => {
+    setError('Failed to load book: ' + e.message);
+    document.getElementById('header-title').textContent = 'Error';
+  });
 </script>
 
 </body>

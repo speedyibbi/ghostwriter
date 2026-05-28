@@ -1,11 +1,21 @@
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import books, chapters, workflow
+from app.workflow import jobs
 
-app = FastAPI(title="Ghostwriter", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    jobs.shutdown()
+
+
+app = FastAPI(title="Ghostwriter", version="0.1.0", lifespan=lifespan)
 
 app.include_router(books.router, prefix="/api/books", tags=["books"])
 app.include_router(chapters.router, prefix="/api/chapters", tags=["chapters"])

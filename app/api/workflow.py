@@ -1,33 +1,28 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.llm.client import LLMError
-from app.workflow import runner
+from app.workflow import jobs, runner
 
 router = APIRouter()
+
+_ACCEPTED = {"accepted": True}
 
 
 class NotesRequest(BaseModel):
     notes: str
 
 
-def _run(fn):
-    """
-    Execute *fn*, mapping known exceptions to appropriate HTTP errors.
+def _accepted(**extra) -> JSONResponse:
+    return JSONResponse(status_code=202, content={**_ACCEPTED, **extra})
 
-    ValueError  → 400  (bad state transition or missing data)
-    LLMError    → 500  (Gemini call failed; service already persisted error state)
-    Exception   → 500  (unexpected)
-    """
+
+def _prepare(fn):
+    """Run synchronous validation / state updates; map ValueError → 400."""
     try:
-        result = fn()
-        return result if result is not None else {"ok": True}
+        return fn()
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except LLMError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {exc}")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ── Book-level actions ──
@@ -35,22 +30,31 @@ def _run(fn):
 
 @router.post("/{book_id}/generate-outline")
 def generate_outline(book_id: str):
-    return _run(lambda: runner.run_outline_generation(book_id))
+    _prepare(lambda: runner.prepare_outline_generation(book_id))
+    jobs.enqueue(runner.execute_outline_generation, book_id)
+    return _accepted(book_id=book_id)
 
 
 @router.post("/{book_id}/submit-outline-notes")
 def submit_outline_notes(book_id: str, body: NotesRequest):
-    return _run(lambda: runner.submit_outline_notes(book_id, body.notes))
+    _prepare(lambda: runner.prepare_submit_outline_notes(book_id, body.notes))
+    jobs.enqueue(runner.execute_outline_generation, book_id)
+    return _accepted(book_id=book_id)
 
 
 @router.post("/{book_id}/approve-outline")
 def approve_outline(book_id: str):
-    return _run(lambda: runner.approve_outline(book_id))
+    first_chapter_id = _prepare(lambda: runner.prepare_approve_outline(book_id))
+    if first_chapter_id:
+        jobs.enqueue(runner.execute_chapter_generation, first_chapter_id)
+    return _accepted(book_id=book_id)
 
 
 @router.post("/{book_id}/compile")
 def compile_book(book_id: str):
-    return _run(lambda: {"output_path": runner.run_compilation(book_id)})
+    _prepare(lambda: runner.prepare_compilation(book_id))
+    jobs.enqueue(runner.execute_compilation, book_id)
+    return _accepted(book_id=book_id)
 
 
 # ── Chapter-level actions ──
@@ -58,14 +62,20 @@ def compile_book(book_id: str):
 
 @router.post("/chapter/{chapter_id}/approve")
 def approve_chapter(chapter_id: str):
-    return _run(lambda: runner.approve_chapter(chapter_id))
+    _prepare(lambda: runner.prepare_approve_chapter(chapter_id))
+    jobs.enqueue(runner.execute_continue_after_chapter_approval, chapter_id)
+    return _accepted(chapter_id=chapter_id)
 
 
 @router.post("/chapter/{chapter_id}/submit-notes")
 def submit_chapter_notes(chapter_id: str, body: NotesRequest):
-    return _run(lambda: runner.submit_chapter_notes(chapter_id, body.notes))
+    _prepare(lambda: runner.prepare_submit_chapter_notes(chapter_id, body.notes))
+    jobs.enqueue(runner.execute_chapter_generation, chapter_id)
+    return _accepted(chapter_id=chapter_id)
 
 
 @router.post("/chapter/{chapter_id}/retry")
 def retry_chapter(chapter_id: str):
-    return _run(lambda: runner.retry_chapter_generation(chapter_id))
+    _prepare(lambda: runner.prepare_retry_chapter(chapter_id))
+    jobs.enqueue(runner.execute_chapter_generation, chapter_id)
+    return _accepted(chapter_id=chapter_id)

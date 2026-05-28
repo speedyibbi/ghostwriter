@@ -28,6 +28,7 @@ function escHtml(s) {
 function badge(status) {
   const map = {
     pending:        ['badge-gray',   'Pending'],
+    processing:     ['badge-orange', 'Generating…'],
     in_review:      ['badge-orange', 'In Review'],
     needs_revision: ['badge-orange', 'In Review'],
     approved:       ['badge-green',  'Approved'],

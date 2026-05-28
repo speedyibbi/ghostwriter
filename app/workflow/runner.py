@@ -1,16 +1,14 @@
 """
 Workflow runner — the central state machine
 
-Each public function corresponds to exactly one editor action (button press in
-the UI → API route → function here). Functions validate the current DB state
-before doing anything, so they are safe to call from the API layer without
-pre-checking.
+Prepare functions validate state and mark rows ``processing`` (sync, called from
+API routes). Execute functions perform LLM work (async via jobs.enqueue).
 
 Raises:
     ValueError   — invalid state transition or missing data (→ HTTP 400)
-    LLMError     — LLM call failed after retries (→ HTTP 500)
+    LLMError     — LLM call failed after retries (→ HTTP 500 on sync paths only)
                    The service layer already persisted the error state before
-                   re-raising, so no additional DB cleanup is needed here.
+                   re-raising, so no additional DB cleanup is needed on execute.
 """
 
 import logging
@@ -55,36 +53,39 @@ def _get_chapter(chapter_id: str) -> dict:
     return resp.data[0]
 
 
+def _reject_if_processing(status: str, label: str) -> None:
+    if status == "processing":
+        raise ValueError(f"{label} is already in progress. Please wait.")
+
+
 # ── outline stage ──
 
 
-def run_outline_generation(book_id: str) -> None:
-    """
-    Generate (or retry) the outline for a book.
-
-    Valid from: pending | error
-    """
+def prepare_outline_generation(book_id: str) -> None:
+    """Validate and mark the outline as processing before background generation."""
     book = _get_book(book_id)
+    _reject_if_processing(book["outline_status"], "Outline generation")
     allowed = {"pending", "error"}
     if book["outline_status"] not in allowed:
         raise ValueError(
             f"Cannot generate outline: current status is {book['outline_status']!r}. "
             f"Expected one of {allowed}."
         )
+    get_client().table("books").update(
+        {"outline_status": "processing", "error_message": None}
+    ).eq("id", book_id).execute()
+
+
+def execute_outline_generation(book_id: str) -> None:
     _gen_outline(book_id)
 
 
-def submit_outline_notes(book_id: str, notes: str) -> None:
-    """
-    Save the editor's revision notes on the outline and immediately
-    regenerate it.
-
-    Valid from: in_review
-    """
+def prepare_submit_outline_notes(book_id: str, notes: str) -> None:
     if not notes or not notes.strip():
         raise ValueError("Revision notes cannot be empty")
 
     book = _get_book(book_id)
+    _reject_if_processing(book["outline_status"], "Outline generation")
     if book["outline_status"] != "in_review":
         raise ValueError(
             f"Cannot submit outline notes: current status is "
@@ -94,7 +95,8 @@ def submit_outline_notes(book_id: str, notes: str) -> None:
     get_client().table("books").update(
         {
             "notes_after_outline": notes.strip(),
-            "outline_status": "needs_revision",
+            "outline_status": "processing",
+            "error_message": None,
         }
     ).eq("id", book_id).execute()
 
@@ -102,18 +104,15 @@ def submit_outline_notes(book_id: str, notes: str) -> None:
         "outline_revision_requested", "Editor submitted revision notes", book_id=book_id
     )
 
-    _gen_outline(book_id)
 
-
-def approve_outline(book_id: str) -> None:
+def prepare_approve_outline(book_id: str) -> str | None:
     """
-    Approve the outline, create chapter rows by parsing it, then trigger
-    generation of the first chapter.
+    Approve the outline, create chapter rows, and mark the first chapter processing.
 
-    Valid from: in_review
-    Chapter rows are created idempotently (safe to call twice).
+    Returns the first chapter id to generate, or None if no chapter row exists.
     """
     book = _get_book(book_id)
+    _reject_if_processing(book["outline_status"], "Outline approval")
     if book["outline_status"] != "in_review":
         raise ValueError(
             f"Cannot approve outline: current status is "
@@ -137,7 +136,6 @@ def approve_outline(book_id: str) -> None:
         book_id=book_id,
     )
 
-    # Create chapter rows (idempotent — skip existing ones).
     min_index = parsed[0][0]
     for chapter_index, chapter_title in parsed:
         exists = (
@@ -159,7 +157,6 @@ def approve_outline(book_id: str) -> None:
         if chapter_index < min_index:
             min_index = chapter_index
 
-    # Trigger the first chapter immediately.
     first = (
         db.table("chapters")
         .select("id")
@@ -167,41 +164,54 @@ def approve_outline(book_id: str) -> None:
         .eq("chapter_index", min_index)
         .execute()
     )
-    if first.data:
-        _gen_chapter(first.data[0]["id"])
+    if not first.data:
+        return None
+
+    chapter_id = first.data[0]["id"]
+    db.table("chapters").update(
+        {"status": "processing", "error_message": None}
+    ).eq("id", chapter_id).execute()
+    return chapter_id
+
+
+def execute_chapter_generation(chapter_id: str) -> None:
+    _gen_chapter(chapter_id)
 
 
 # ── chapter stage ──
 
 
-def approve_chapter(chapter_id: str) -> None:
-    """
-    Approve a chapter, generate its summary, then either trigger the next
-    pending chapter or mark the book ready for final compilation.
-
-    Valid from: in_review
-    Summary failure is non-fatal: the chapter stays approved and the workflow
-    continues, but the missing summary will reduce LLM context for later chapters.
-    """
+def prepare_approve_chapter(chapter_id: str) -> None:
     chapter = _get_chapter(chapter_id)
+    _reject_if_processing(chapter["status"], "Chapter workflow")
     if chapter["status"] != "in_review":
         raise ValueError(
             f"Cannot approve chapter: current status is "
             f"{chapter['status']!r}. Expected 'in_review'."
         )
 
-    book_id = chapter["book_id"]
-    db = get_client()
-
-    db.table("chapters").update({"status": "approved"}).eq("id", chapter_id).execute()
+    get_client().table("chapters").update({"status": "approved"}).eq(
+        "id", chapter_id
+    ).execute()
     log_event(
         "chapter_approved",
         f"Chapter {chapter['chapter_index']} approved",
-        book_id=book_id,
+        book_id=chapter["book_id"],
         chapter_id=chapter_id,
     )
 
-    # Generate summary before triggering the next chapter so the context is available immediately.
+
+def execute_continue_after_chapter_approval(chapter_id: str) -> None:
+    """
+    Generate summary, then the next pending chapter or mark the book ready to compile.
+
+    Summary failure is non-fatal: the chapter stays approved and the workflow
+    continues, but the missing summary will reduce LLM context for later chapters.
+    """
+    chapter = _get_chapter(chapter_id)
+    book_id = chapter["book_id"]
+    db = get_client()
+
     try:
         _gen_summary(chapter_id)
     except LLMError as exc:
@@ -211,12 +221,9 @@ def approve_chapter(chapter_id: str) -> None:
             exc,
         )
         db.table("chapters").update(
-            {
-                "error_message": f"Summary generation failed: {exc}",
-            }
+            {"error_message": f"Summary generation failed: {exc}"}
         ).eq("id", chapter_id).execute()
 
-    # Trigger the next pending chapter.
     next_ch = (
         db.table("chapters")
         .select("id")
@@ -227,10 +234,13 @@ def approve_chapter(chapter_id: str) -> None:
         .execute()
     )
     if next_ch.data:
-        _gen_chapter(next_ch.data[0]["id"])
+        next_id = next_ch.data[0]["id"]
+        db.table("chapters").update(
+            {"status": "processing", "error_message": None}
+        ).eq("id", next_id).execute()
+        _gen_chapter(next_id)
         return
 
-    # No more pending chapters — check whether all chapters are now approved.
     not_done = (
         db.table("chapters")
         .select("id")
@@ -249,16 +259,12 @@ def approve_chapter(chapter_id: str) -> None:
         )
 
 
-def submit_chapter_notes(chapter_id: str, notes: str) -> None:
-    """
-    Save the editor's revision notes on a chapter and immediately regenerate it.
-
-    Valid from: in_review
-    """
+def prepare_submit_chapter_notes(chapter_id: str, notes: str) -> None:
     if not notes or not notes.strip():
         raise ValueError("Revision notes cannot be empty")
 
     chapter = _get_chapter(chapter_id)
+    _reject_if_processing(chapter["status"], "Chapter generation")
     if chapter["status"] != "in_review":
         raise ValueError(
             f"Cannot submit chapter notes: current status is "
@@ -268,7 +274,8 @@ def submit_chapter_notes(chapter_id: str, notes: str) -> None:
     get_client().table("chapters").update(
         {
             "notes": notes.strip(),
-            "status": "needs_revision",
+            "status": "processing",
+            "error_message": None,
         }
     ).eq("id", chapter_id).execute()
 
@@ -279,40 +286,46 @@ def submit_chapter_notes(chapter_id: str, notes: str) -> None:
         chapter_id=chapter_id,
     )
 
-    _gen_chapter(chapter_id)
 
-
-# ── chapter error recovery ──
-
-
-def retry_chapter_generation(chapter_id: str) -> None:
-    """
-    Retry generation for a chapter that is stuck in error state.
-
-    Valid from: error
-    """
+def prepare_retry_chapter(chapter_id: str) -> None:
     chapter = _get_chapter(chapter_id)
+    _reject_if_processing(chapter["status"], "Chapter generation")
     if chapter["status"] != "error":
         raise ValueError(
             f"Cannot retry chapter: status is {chapter['status']!r}. Expected 'error'."
         )
-    _gen_chapter(chapter_id)
+    get_client().table("chapters").update(
+        {"status": "processing", "error_message": None}
+    ).eq("id", chapter_id).execute()
 
 
 # ── final compilation stage ──
 
 
-def run_compilation(book_id: str) -> str:
-    """
-    Compile all approved chapters into output files.
-
-    Valid from: in_review (final_status)
-    Returns the output directory path.
-    """
+def prepare_compilation(book_id: str) -> None:
     book = _get_book(book_id)
-    if book["final_status"] != "in_review":
+    _reject_if_processing(book["final_status"], "Compilation")
+    allowed = {"in_review", "error"}
+    if book["final_status"] not in allowed:
         raise ValueError(
             f"Cannot compile: final_status is {book['final_status']!r}. "
-            "Expected 'in_review'. All chapters must be approved first."
+            f"Expected one of {allowed}. All chapters must be approved first."
         )
-    return _compile(book_id)
+    get_client().table("books").update(
+        {"final_status": "processing", "error_message": None}
+    ).eq("id", book_id).execute()
+
+
+def execute_compilation(book_id: str) -> None:
+    db = get_client()
+    try:
+        _compile(book_id)
+    except Exception as exc:
+        logger.exception("Compilation failed for book %s", book_id)
+        db.table("books").update(
+            {
+                "final_status": "error",
+                "error_message": str(exc),
+            }
+        ).eq("id", book_id).execute()
+        log_event("compilation_error", str(exc), book_id=book_id)
