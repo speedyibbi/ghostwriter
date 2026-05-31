@@ -12,7 +12,6 @@ Raises:
 """
 
 import logging
-import re
 
 from app.core.database import get_client
 from app.llm.client import LLMError
@@ -21,22 +20,9 @@ from app.services.chapter import generate_summary as _gen_summary
 from app.services.compilation import compile_book as _compile
 from app.services.log import log_event
 from app.services.outline import generate_outline as _gen_outline
+from app.workflow.outline_parse import outline_parse_error, parse_chapters
 
 logger = logging.getLogger(__name__)
-
-# Matches lines like "Chapter 3: The Road Ahead" (case-insensitive).
-_CHAPTER_RE = re.compile(
-    r"^Chapter\s+(\d+)\s*:\s*(.+)$",
-    re.MULTILINE | re.IGNORECASE,
-)
-
-# ── helpers ──
-
-
-def _parse_chapters(outline: str) -> list[tuple[int, str]]:
-    """Return [(chapter_index, title), …] extracted from the outline text."""
-    matches = _CHAPTER_RE.findall(outline)
-    return [(int(num), title.strip()) for num, title in matches]
 
 
 def _get_book(book_id: str) -> dict:
@@ -86,10 +72,10 @@ def prepare_submit_outline_notes(book_id: str, notes: str) -> None:
 
     book = _get_book(book_id)
     _reject_if_processing(book["outline_status"], "Outline generation")
-    if book["outline_status"] != "in_review":
+    if book["outline_status"] not in {"in_review", "error"}:
         raise ValueError(
             f"Cannot submit outline notes: current status is "
-            f"{book['outline_status']!r}. Expected 'in_review'."
+            f"{book['outline_status']!r}. Expected 'in_review' or 'error'."
         )
 
     get_client().table("books").update(
@@ -120,12 +106,10 @@ def prepare_approve_outline(book_id: str) -> str | None:
         )
 
     outline = book.get("outline") or ""
-    parsed = _parse_chapters(outline)
-    if not parsed:
-        raise ValueError(
-            "Could not parse any chapters from the outline. "
-            "The outline may not follow the expected format."
-        )
+    parsed = parse_chapters(outline)
+    parse_err = outline_parse_error(outline)
+    if parse_err:
+        raise ValueError(parse_err)
 
     db = get_client()
 

@@ -4,6 +4,7 @@ from app.core.database import get_client
 from app.llm.client import LLMError, generate, load_prompt
 from app.services.log import log_event
 from app.services.notification import notify
+from app.workflow.outline_parse import outline_parse_error, parse_chapters
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,18 @@ def generate_outline(book_id: str) -> str:
         log_event("outline_error", str(exc), book_id=book_id)
         raise
 
+    parse_err = outline_parse_error(outline)
+    if parse_err:
+        db.table("books").update(
+            {
+                "outline": outline,
+                "outline_status": "error",
+                "error_message": parse_err,
+            }
+        ).eq("id", book_id).execute()
+        log_event("outline_parse_error", parse_err, book_id=book_id)
+        raise LLMError(parse_err)
+
     db.table("books").update(
         {
             "outline": outline,
@@ -75,7 +88,7 @@ def generate_outline(book_id: str) -> str:
 
     log_event(
         "outline_generated",
-        f'Outline generated for "{book["title"]}"',
+        f'Outline generated for "{book["title"]}" ({len(parse_chapters(outline))} chapters)',
         book_id=book_id,
     )
     notify(

@@ -6,8 +6,12 @@ import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
 
 from app.core.config import settings
+from app.llm.response import LLMError, extract_text
 
 logger = logging.getLogger(__name__)
+
+# Re-export for callers that import LLMError from client.
+__all__ = ["LLMError", "generate", "load_prompt"]
 
 # Errors that are safe to retry (rate limits, transient server errors).
 _RETRYABLE = (
@@ -21,11 +25,6 @@ _MAX_RETRIES = 3
 _INITIAL_BACKOFF = 2.0  # seconds; doubles on each retry
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
-
-
-class LLMError(Exception):
-    pass
-
 
 _model: genai.GenerativeModel | None = None
 
@@ -45,7 +44,9 @@ def generate(prompt: str) -> str:
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
             response = model.generate_content(prompt)
-            return response.text
+            return extract_text(response)
+        except LLMError:
+            raise
         except _RETRYABLE as exc:
             last_exc = exc
             wait = _INITIAL_BACKOFF * (2 ** (attempt - 1))

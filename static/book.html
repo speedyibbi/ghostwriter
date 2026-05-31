@@ -171,9 +171,19 @@ function renderOutlineCard() {
       </p>`;
     }
     body += `<div class="content-box">${escHtml(book.outline)}</div>`;
+    if (book.outline_parse_ok && book.outline_chapters?.length) {
+      const items = book.outline_chapters
+        .map(ch => `<li>Chapter ${ch.chapter_index}: ${escHtml(ch.title)}</li>`)
+        .join('');
+      body += `<p class="muted" style="margin:.75rem 0 .375rem"><strong>Parsed chapters</strong></p>
+        <ul class="chapter-parse-list">${items}</ul>`;
+    } else if (!book.outline_parse_ok) {
+      body += `<p class="warning-text">⚠ This outline has no parseable chapter headings. Request a revision and ask for the format &quot;Chapter 1: Title&quot;.</p>`;
+    }
+    const canApprove = book.outline_parse_ok;
     body += `
       <div class="actions">
-        <button class="btn-success" onclick="approveOutline()">Approve &amp; Start Chapters</button>
+        <button class="btn-success" onclick="approveOutline()"${canApprove ? '' : ' disabled'}>Approve &amp; Start Chapters</button>
         <button class="btn-secondary" onclick="toggleSection('outline-rev')">Request Revision</button>
       </div>
       <div id="outline-rev" class="revision-form" hidden>
@@ -193,9 +203,20 @@ function renderOutlineCard() {
       </details>`;
 
   } else if (st === 'error') {
+    if (book.outline) {
+      body += `<div class="content-box">${escHtml(book.outline)}</div>`;
+    }
     body += `
       <p class="error-text">⚠ ${escHtml(book.error_message || 'Generation failed. Check logs for details.')}</p>
-      <button onclick="genOutline()">Retry</button>`;
+      <div class="actions">
+        <button onclick="genOutline()">Retry</button>
+        <button class="btn-secondary" onclick="toggleSection('outline-rev')">Request Revision</button>
+      </div>
+      <div id="outline-rev" class="revision-form" hidden>
+        <textarea id="outline-notes" rows="4"
+          placeholder="What would you like changed? Be specific."></textarea>
+        <button onclick="submitOutlineNotes()">Submit &amp; Regenerate</button>
+      </div>`;
   }
 
   return `<div class="card"><h2>Outline ${badge(st)}</h2>${body}</div>`;

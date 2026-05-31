@@ -1,8 +1,19 @@
 from fastapi import APIRouter, HTTPException
 
 from app.core.database import get_client
+from app.workflow.outline_parse import parse_chapters
 
 router = APIRouter()
+
+
+def _with_outline_parse_meta(book: dict) -> dict:
+    outline = book.get("outline") or ""
+    parsed = parse_chapters(outline)
+    book["outline_chapters"] = [
+        {"chapter_index": idx, "title": title} for idx, title in parsed
+    ]
+    book["outline_parse_ok"] = bool(parsed)
+    return book
 
 
 @router.get("/")
@@ -24,4 +35,4 @@ def get_book(book_id: str):
     resp = get_client().table("books").select("*").eq("id", book_id).execute()
     if not resp.data:
         raise HTTPException(status_code=404, detail=f"Book {book_id!r} not found")
-    return resp.data[0]
+    return _with_outline_parse_meta(resp.data[0])
