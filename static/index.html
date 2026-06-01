@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ghostwriter</title>
   <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/api.js"></script>
 </head>
 <body>
 
@@ -48,9 +49,7 @@ function fmtDate(iso) {
 
 async function loadBooks() {
   try {
-    const res = await fetch('/api/books/');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const books = await res.json();
+    const books = await api('GET', '/api/books/');
     render(books);
   } catch (e) {
     const banner = document.getElementById('error-banner');
@@ -103,7 +102,7 @@ function render(books) {
   root.innerHTML = html;
 }
 
-loadBooks();
+ensureApiKeyConfigured().then(loadBooks);
 </script>
 
 </body>

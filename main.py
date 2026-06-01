@@ -6,6 +6,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import books, chapters, workflow
+from app.core.config import settings
+from app.core.security import ApiKeyMiddleware
 from app.workflow import jobs
 
 
@@ -16,6 +18,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Ghostwriter", version="0.1.0", lifespan=lifespan)
+app.add_middleware(ApiKeyMiddleware)
 
 app.include_router(books.router, prefix="/api/books", tags=["books"])
 app.include_router(chapters.router, prefix="/api/chapters", tags=["chapters"])
@@ -39,5 +42,10 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/config", include_in_schema=False)
+async def public_config():
+    return {"api_key_required": bool(settings.api_key)}
+
+
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host=settings.bind_host, port=8000, reload=True)

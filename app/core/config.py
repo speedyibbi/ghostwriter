@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # ── Output ──
     output_dir: str = "./output"
 
+    # ── Server ──
+    bind_host: str = "127.0.0.1"
+    # When set, all /api/* requests must send header X-API-Key with this value.
+    api_key: str = ""
+
     # ── Google Sheets ──
     google_sheets_credentials_json: str = ""
 

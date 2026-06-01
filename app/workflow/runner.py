@@ -14,12 +14,7 @@ Raises:
 import logging
 
 from app.core.database import get_client
-from app.llm.client import LLMError
-from app.services.chapter import generate_chapter as _gen_chapter
-from app.services.chapter import generate_summary as _gen_summary
-from app.services.compilation import compile_book as _compile
 from app.services.log import log_event
-from app.services.outline import generate_outline as _gen_outline
 from app.workflow.outline_parse import outline_parse_error, parse_chapters
 
 logger = logging.getLogger(__name__)
@@ -63,7 +58,9 @@ def prepare_outline_generation(book_id: str) -> None:
 
 
 def execute_outline_generation(book_id: str) -> None:
-    _gen_outline(book_id)
+    from app.services.outline import generate_outline
+
+    generate_outline(book_id)
 
 
 def prepare_submit_outline_notes(book_id: str, notes: str) -> None:
@@ -159,7 +156,9 @@ def prepare_approve_outline(book_id: str) -> str | None:
 
 
 def execute_chapter_generation(chapter_id: str) -> None:
-    _gen_chapter(chapter_id)
+    from app.services.chapter import generate_chapter
+
+    generate_chapter(chapter_id)
 
 
 # ── chapter stage ──
@@ -192,12 +191,15 @@ def execute_continue_after_chapter_approval(chapter_id: str) -> None:
     Summary failure is non-fatal: the chapter stays approved and the workflow
     continues, but the missing summary will reduce LLM context for later chapters.
     """
+    from app.llm.client import LLMError
+    from app.services.chapter import generate_chapter, generate_summary
+
     chapter = _get_chapter(chapter_id)
     book_id = chapter["book_id"]
     db = get_client()
 
     try:
-        _gen_summary(chapter_id)
+        generate_summary(chapter_id)
     except LLMError as exc:
         logger.warning(
             "Summary generation failed for chapter %s (continuing): %s",
@@ -222,7 +224,7 @@ def execute_continue_after_chapter_approval(chapter_id: str) -> None:
         db.table("chapters").update(
             {"status": "processing", "error_message": None}
         ).eq("id", next_id).execute()
-        _gen_chapter(next_id)
+        generate_chapter(next_id)
         return
 
     not_done = (
@@ -301,9 +303,11 @@ def prepare_compilation(book_id: str) -> None:
 
 
 def execute_compilation(book_id: str) -> None:
+    from app.services.compilation import compile_book
+
     db = get_client()
     try:
-        _compile(book_id)
+        compile_book(book_id)
     except Exception as exc:
         logger.exception("Compilation failed for book %s", book_id)
         db.table("books").update(
