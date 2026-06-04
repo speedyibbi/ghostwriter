@@ -394,4 +394,16 @@ python scripts/import_books.py --source "https://docs.google.com/spreadsheets/d/
 python main.py
 ```
 
-Open `http://localhost:8000` in your browser.
+Open `http://localhost:8000` in your browser. By default the app binds to `127.0.0.1` only (see `BIND_HOST` in `.env`).
+
+### Security (local / LAN)
+
+- **`BIND_HOST`** — defaults to `127.0.0.1` so the server is not reachable from other machines. Set to `0.0.0.0` only if you intend to expose it on your network.
+- **`API_KEY`** — when set, every `/api/*` request must include header `X-API-Key: <your key>`. The web UI stores the key in `localStorage` after the first prompt. Leave empty for open local development.
+
+### Tests
+
+```bash
+pip install -r requirements.txt
+pytest
+```
