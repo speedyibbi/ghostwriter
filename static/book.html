@@ -128,6 +128,26 @@ function toggleSection(id) {
   if (el) el.hidden = !el.hidden;
 }
 
+function renderStuckJobActions(kind, chapterId) {
+  const hint = '<p class="muted" style="margin-top:.5rem;font-size:.8125rem">Taking too long? The server may have restarted.</p>';
+  if (kind === 'outline') {
+    return `${hint}<div class="actions">
+      <button class="btn-secondary" onclick="cancelOutlineJob()">Cancel</button>
+      <button onclick="retryOutlineJob()">Retry</button>
+    </div>`;
+  }
+  if (kind === 'compilation') {
+    return `${hint}<div class="actions">
+      <button class="btn-secondary" onclick="cancelCompilationJob()">Cancel</button>
+      <button onclick="retryCompilationJob()">Retry</button>
+    </div>`;
+  }
+  return `${hint}<div class="actions">
+    <button class="btn-secondary" onclick="cancelChapterJob('${chapterId}')">Cancel</button>
+    <button onclick="retryChapterJob('${chapterId}')">Retry</button>
+  </div>`;
+}
+
 // ── Render ──
 
 function render() {
@@ -184,6 +204,7 @@ function renderOutlineCard() {
 
   } else if (st === 'processing' || st === 'needs_revision') {
     body += `<p class="muted">Generating outline…</p>`;
+    body += renderStuckJobActions('outline');
 
   } else if (st === 'approved') {
     body += `
@@ -267,6 +288,7 @@ function renderChapter(ch) {
 
   } else if (st === 'processing' || st === 'needs_revision') {
     body += `<p class="muted" style="padding:.375rem 0">Generating…</p>`;
+    body += renderStuckJobActions('chapter', ch.id);
   }
 
   return `
@@ -284,11 +306,12 @@ function renderChapter(ch) {
 
 function renderCompilationCard() {
   const st = book.final_status;
-  if (st !== 'in_review' && st !== 'completed') return '';
+  if (!['in_review', 'completed', 'processing', 'error'].includes(st)) return '';
 
   let body = '';
   if (st === 'processing') {
     body = '<p class="muted">Compiling book…</p>';
+    body += renderStuckJobActions('compilation');
   } else if (st === 'in_review') {
     body = `
       <p style="margin-bottom:1rem">
@@ -361,6 +384,48 @@ function compile() {
   runWorkflow(
     () => api('POST', `/api/workflow/${bookId}/compile`),
     'Compiling book…',
+  );
+}
+
+async function cancelOutlineJob() {
+  await runWorkflow(
+    () => api('POST', `/api/workflow/${bookId}/recover-outline`, { action: 'cancel' }),
+    'Cancelling…',
+  );
+}
+
+function retryOutlineJob() {
+  runWorkflow(
+    () => api('POST', `/api/workflow/${bookId}/recover-outline`, { action: 'retry' }),
+    'Retrying outline…',
+  );
+}
+
+async function cancelCompilationJob() {
+  await runWorkflow(
+    () => api('POST', `/api/workflow/${bookId}/recover-compilation`, { action: 'cancel' }),
+    'Cancelling…',
+  );
+}
+
+function retryCompilationJob() {
+  runWorkflow(
+    () => api('POST', `/api/workflow/${bookId}/recover-compilation`, { action: 'retry' }),
+    'Retrying compilation…',
+  );
+}
+
+async function cancelChapterJob(id) {
+  await runWorkflow(
+    () => api('POST', `/api/workflow/chapter/${id}/recover`, { action: 'cancel' }),
+    'Cancelling…',
+  );
+}
+
+function retryChapterJob(id) {
+  runWorkflow(
+    () => api('POST', `/api/workflow/chapter/${id}/recover`, { action: 'retry' }),
+    'Retrying chapter…',
   );
 }
 

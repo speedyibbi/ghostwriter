@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     bind_host: str = "127.0.0.1"
     # When set, all /api/* requests must send header X-API-Key with this value.
     api_key: str = ""
+    # Reset processing rows older than this many minutes on startup (0 = disabled).
+    stale_job_minutes: int = 30
 
     # ── Google Sheets ──
     google_sheets_credentials_json: str = ""

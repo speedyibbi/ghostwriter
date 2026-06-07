@@ -64,3 +64,17 @@ def test_config_endpoint_public():
     res = client.get("/config")
     assert res.status_code == 200
     assert "api_key_required" in res.json()
+
+
+def test_recover_outline_cancel(client, db):
+    db.add_book("b1", outline_status="processing")
+    res = client.post("/api/workflow/b1/recover-outline", json={"action": "cancel"})
+    assert res.status_code == 200
+    assert db.get_book("b1")["outline_status"] == "error"
+
+
+def test_recover_outline_retry(client, db):
+    db.add_book("b1", outline_status="processing")
+    res = client.post("/api/workflow/b1/recover-outline", json={"action": "retry"})
+    assert res.status_code == 202
+    assert db.get_book("b1")["outline_status"] == "processing"

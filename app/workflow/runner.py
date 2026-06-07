@@ -285,6 +285,48 @@ def prepare_retry_chapter(chapter_id: str) -> None:
     ).eq("id", chapter_id).execute()
 
 
+def retry_stuck_outline_job(book_id: str) -> None:
+    """Cancel a stuck outline job and queue a fresh generation run."""
+    from app.workflow.recovery import cancel_outline_job
+
+    book = _get_book(book_id)
+    if book["outline_status"] != "processing":
+        raise ValueError(
+            f"Cannot retry outline job: status is {book['outline_status']!r}, "
+            "not 'processing'."
+        )
+    cancel_outline_job(book_id)
+    prepare_outline_generation(book_id)
+
+
+def retry_stuck_compilation_job(book_id: str) -> None:
+    from app.workflow.recovery import cancel_compilation_job
+
+    book = _get_book(book_id)
+    if book["final_status"] != "processing":
+        raise ValueError(
+            f"Cannot retry compilation: final_status is {book['final_status']!r}, "
+            "not 'processing'."
+        )
+    cancel_compilation_job(book_id)
+    prepare_compilation(book_id)
+
+
+def retry_stuck_chapter_job(chapter_id: str) -> None:
+    from app.workflow.recovery import cancel_chapter_job
+
+    chapter = _get_chapter(chapter_id)
+    if chapter["status"] != "processing":
+        raise ValueError(
+            f"Cannot retry chapter job: status is {chapter['status']!r}, "
+            "not 'processing'."
+        )
+    cancel_chapter_job(chapter_id)
+    get_client().table("chapters").update(
+        {"status": "processing", "error_message": None}
+    ).eq("id", chapter_id).execute()
+
+
 # ── final compilation stage ──
 
 

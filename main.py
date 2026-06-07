@@ -9,10 +9,12 @@ from app.api import books, chapters, workflow
 from app.core.config import settings
 from app.core.security import ApiKeyMiddleware
 from app.workflow import jobs
+from app.workflow.recovery import sweep_stale_jobs
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    sweep_stale_jobs()
     yield
     jobs.shutdown()
 
