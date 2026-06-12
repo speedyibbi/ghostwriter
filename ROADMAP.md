@@ -12,8 +12,10 @@ Living plan for what’s shipped, what’s next, and what’s deferred. Prioriti
 | Background jobs + UI polling | Thread pool, `processing` status, HTTP 202, 2s poll in `book.html` |
 | LLM response handling | `extract_text()` for blocked/empty/safety responses |
 | Outline parse validation | Shared parser, post-generation check, UI chapter list + disabled approve |
-| Workflow guard tests | 35 tests (`pytest`): parse, LLM extract, runner guards, API layer |
+| Workflow guard tests | `pytest` suite: parse, LLM extract, runner guards, API layer |
 | Local security | `BIND_HOST=127.0.0.1`, optional `API_KEY` + `static/api.js` |
+| Stuck `processing` recovery | Cancel/Retry in UI, recover API routes, startup stale-job sweep |
+| Summary retry + UI warning | Regenerate summary endpoint, `summary_ok` / warning badge on chapters |
 
 ---
 
@@ -23,12 +25,12 @@ Fix “stuck book” and silent-failure scenarios. **Do these first.**
 
 | # | Item | Problem | Direction |
 |---|------|---------|-----------|
-| 1.1 | Stuck `processing` recovery | Server crash mid-job leaves rows in `processing` with no retry | Add Cancel/Retry in UI; optional startup sweep or stale-job timeout → `error` |
-| 1.2 | Summary retry + UI warning | Summary failures are logged but invisible; later chapters lose context | “Regenerate summary” action; warning badge on approved chapters with summary error |
+| 1.1 | ~~Stuck `processing` recovery~~ | Done — see **Completed** |
+| 1.2 | ~~Summary retry + UI warning~~ | Done — see **Completed** |
 | 1.3 | Dependency-aware `/health` | `/health` always returns ok | Check PostgREST/Postgres; optionally verify required env vars |
 | 1.4 | Revision loop guardrails | `revision_count` tracked but not surfaced | Show count in UI; optional cap + alert on high counts |
 
-**Suggested sprint:** 1.1 → 1.2 → 1.3 → 1.4
+**Suggested sprint:** ~~1.1~~ → ~~1.2~~ → 1.3 → 1.4
 
 ---
 
@@ -88,11 +90,11 @@ After the core workflow feels solid.
 ## Next up (recommended)
 
 ```
-P1.1  Stuck processing recovery
-P1.2  Summary retry + UI warning
+~~P1.1~~ Stuck processing recovery ✓
+~~P1.2~~ Summary retry + UI warning ✓
+P1.3  Dependency-aware /health
 P2.1  Activity log on book page
 P2.4  Download endpoint
-P3.1  Docx paragraph splitting
 P4.1  CI (pytest + ruff)
 ```
 
