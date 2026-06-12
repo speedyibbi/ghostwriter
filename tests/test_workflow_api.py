@@ -78,3 +78,23 @@ def test_recover_outline_retry(client, db):
     res = client.post("/api/workflow/b1/recover-outline", json={"action": "retry"})
     assert res.status_code == 202
     assert db.get_book("b1")["outline_status"] == "processing"
+
+
+def test_regenerate_summary(client, db, monkeypatch):
+    db.add_book("b1")
+    db.add_chapter(
+        "c1",
+        "b1",
+        status="approved",
+        content="Text",
+        error_message="Summary generation failed: old",
+    )
+    monkeypatch.setattr(
+        "app.workflow.runner.execute_regenerate_summary",
+        lambda _id: db.chapters["c1"].update(
+            {"summary": "Done", "error_message": None}
+        ),
+    )
+    res = client.post("/api/workflow/chapter/c1/regenerate-summary")
+    assert res.status_code == 200
+    assert res.json()["ok"] is True

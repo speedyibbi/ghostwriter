@@ -125,3 +125,10 @@ def recover_chapter(chapter_id: str, body: RecoverRequest):
         jobs.enqueue(runner.execute_chapter_generation, chapter_id)
         return _accepted(chapter_id=chapter_id)
     raise HTTPException(status_code=400, detail="action must be 'cancel' or 'retry'")
+
+
+@router.post("/chapter/{chapter_id}/regenerate-summary")
+def regenerate_summary(chapter_id: str):
+    _prepare(lambda: runner.validate_regenerate_summary(chapter_id))
+    runner.execute_regenerate_summary(chapter_id)
+    return {"ok": True}

@@ -200,6 +200,7 @@ def execute_continue_after_chapter_approval(chapter_id: str) -> None:
 
     try:
         generate_summary(chapter_id)
+        db.table("chapters").update({"error_message": None}).eq("id", chapter_id).execute()
     except LLMError as exc:
         logger.warning(
             "Summary generation failed for chapter %s (continuing): %s",
@@ -325,6 +326,37 @@ def retry_stuck_chapter_job(chapter_id: str) -> None:
     get_client().table("chapters").update(
         {"status": "processing", "error_message": None}
     ).eq("id", chapter_id).execute()
+
+
+def execute_regenerate_summary(chapter_id: str) -> None:
+    """Regenerate summary for an approved chapter (sync; caller handles HTTP response)."""
+    from app.llm.client import LLMError
+    from app.services.chapter import generate_summary
+
+    try:
+        generate_summary(chapter_id)
+    except LLMError as exc:
+        chapter = _get_chapter(chapter_id)
+        get_client().table("chapters").update(
+            {"error_message": f"Summary generation failed: {exc}"}
+        ).eq("id", chapter_id).execute()
+        log_event(
+            "summary_error",
+            str(exc),
+            book_id=chapter["book_id"],
+            chapter_id=chapter_id,
+        )
+
+
+def validate_regenerate_summary(chapter_id: str) -> None:
+    chapter = _get_chapter(chapter_id)
+    if chapter["status"] != "approved":
+        raise ValueError(
+            f"Cannot regenerate summary: chapter status is "
+            f"{chapter['status']!r}. Expected 'approved'."
+        )
+    if not (chapter.get("content") or "").strip():
+        raise ValueError("Chapter has no content to summarize.")
 
 
 # ── final compilation stage ──

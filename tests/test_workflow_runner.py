@@ -154,3 +154,56 @@ def test_prepare_compilation_rejects_pending(db):
     db.add_book("b1", final_status="pending")
     with pytest.raises(ValueError, match="Expected one of"):
         runner.prepare_compilation("b1")
+
+
+def test_validate_regenerate_summary_requires_approved(db):
+    db.add_book("b1")
+    db.add_chapter("c1", "b1", status="in_review", content="Body")
+    with pytest.raises(ValueError, match="Expected 'approved'"):
+        runner.validate_regenerate_summary("c1")
+
+
+def test_validate_regenerate_summary_requires_content(db):
+    db.add_book("b1")
+    db.add_chapter("c1", "b1", status="approved", content="")
+    with pytest.raises(ValueError, match="no content"):
+        runner.validate_regenerate_summary("c1")
+
+
+def test_execute_regenerate_summary_clears_error_on_success(db, monkeypatch):
+    db.add_book("b1")
+    db.add_chapter(
+        "c1",
+        "b1",
+        status="approved",
+        content="Chapter body",
+        error_message="Summary generation failed: old",
+    )
+
+    def fake_summary(chapter_id: str) -> str:
+        db.chapters[chapter_id]["summary"] = "New summary"
+        db.chapters[chapter_id]["error_message"] = None
+        return "New summary"
+
+    monkeypatch.setattr(
+        "app.services.chapter.generate_summary",
+        fake_summary,
+    )
+    runner.execute_regenerate_summary("c1")
+    ch = db.get_chapter("c1")
+    assert ch["summary"] == "New summary"
+    assert ch["error_message"] is None
+
+
+def test_execute_regenerate_summary_persists_error(db, monkeypatch):
+    from app.llm.response import LLMError
+
+    db.add_book("b1")
+    db.add_chapter("c1", "b1", status="approved", content="Chapter body")
+
+    def fail_summary(_chapter_id: str) -> str:
+        raise LLMError("blocked")
+
+    monkeypatch.setattr("app.services.chapter.generate_summary", fail_summary)
+    runner.execute_regenerate_summary("c1")
+    assert "Summary generation failed" in db.get_chapter("c1")["error_message"]

@@ -94,6 +94,7 @@ header h1 {
 .badge-gray   { background: #f3f4f6; color: #374151; }
 .badge-orange { background: #fff7ed; color: #c2410c; }
 .badge-green  { background: #f0fdf4; color: #15803d; }
+.badge-yellow { background: #fefce8; color: #a16207; }
 .badge-red    { background: #fef2f2; color: #b91c1c; }
 
 /* ── Buttons ── */

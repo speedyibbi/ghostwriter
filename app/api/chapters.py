@@ -1,8 +1,18 @@
 from fastapi import APIRouter
 
 from app.core.database import get_client
+from app.services.summary_status import summary_ok, summary_warning
 
 router = APIRouter()
+
+
+def _enrich_chapter(chapter: dict) -> dict:
+    enriched = dict(chapter)
+    enriched["summary_ok"] = summary_ok(chapter)
+    warning = summary_warning(chapter)
+    if warning:
+        enriched["summary_warning"] = warning
+    return enriched
 
 
 @router.get("/{book_id}")
@@ -19,4 +29,4 @@ def list_chapters(book_id: str):
         .order("chapter_index")
         .execute()
     )
-    return resp.data or []
+    return [_enrich_chapter(ch) for ch in (resp.data or [])]

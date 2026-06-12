@@ -276,6 +276,18 @@ function renderChapter(ch) {
         <button onclick="submitChapterNotes('${ch.id}')">Submit &amp; Regenerate</button>
       </div>`;
 
+  } else if (st === 'approved') {
+    if (!ch.summary_ok) {
+      body += `
+        <p class="warning-text">⚠ ${escHtml(ch.summary_warning || 'Summary missing.')}</p>
+        <p class="muted" style="font-size:.8125rem;margin-bottom:.5rem">
+          Later chapters use summaries for context. Regenerate before approving more chapters when possible.
+        </p>
+        <div class="actions">
+          <button class="btn-secondary" onclick="regenerateSummary('${ch.id}')">Regenerate Summary</button>
+        </div>`;
+    }
+
   } else if (st === 'error') {
     body += `
       <p class="error-text">⚠ ${escHtml(ch.error_message || 'Generation failed.')}</p>
@@ -297,6 +309,7 @@ function renderChapter(ch) {
         <span class="chapter-num">${chNum}</span>
         <span class="chapter-title">${escHtml(ch.title || '')}</span>
         ${badge(st)}
+        ${st === 'approved' && !ch.summary_ok ? '<span class="badge badge-yellow">Summary issue</span>' : ''}
       </div>
       ${body ? `<div class="chapter-body">${body}</div>` : ''}
     </div>`;
@@ -426,6 +439,13 @@ function retryChapterJob(id) {
   runWorkflow(
     () => api('POST', `/api/workflow/chapter/${id}/recover`, { action: 'retry' }),
     'Retrying chapter…',
+  );
+}
+
+function regenerateSummary(id) {
+  runWorkflow(
+    () => api('POST', `/api/workflow/chapter/${id}/regenerate-summary`),
+    'Regenerating summary…',
   );
 }
 

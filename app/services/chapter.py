@@ -149,7 +149,9 @@ def generate_summary(chapter_id: str) -> str:
         log_event("summary_error", str(exc), book_id=book_id, chapter_id=chapter_id)
         raise
 
-    db.table("chapters").update({"summary": summary}).eq("id", chapter_id).execute()
+    db.table("chapters").update(
+        {"summary": summary, "error_message": None}
+    ).eq("id", chapter_id).execute()
 
     log_event(
         "summary_generated",
